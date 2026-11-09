@@ -1,6 +1,5 @@
 package com.springboot.EasyPay.config;
 
-
 import com.springboot.EasyPay.service.MyUserDetailsService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -12,6 +11,7 @@ import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
@@ -22,158 +22,198 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @EnableWebSecurity
 public class SecurityConfig {
 
-    // I will define a bean of type UserDetailsService
-    // You are telling Spring: I don't want to use your details service,
-    // I want to define my own Service and my own credentials.
-/*
-    @Bean
-    public UserDetailsService users() {
-        UserDetails customer1 = User.builder()
-                .username("customer1")
-                .password("{noop}customer1")
-                .authorities("CUSTOMER")
-
-                .build();
-        UserDetails executive1 = User.builder()
-                .username("executive1")
-                .password("{noop}executive1")
-                .authorities("EXECUTIVE")
-                .build();
-        UserDetails manager1 = User.builder()
-                .username("manager1")
-                .password("{noop}manager1")
-                .authorities("MANAGER")
-                .build();
-        return new InMemoryUserDetailsManager(customer1, executive1, manager1);
-
-    }
-
- */
     private final JwtFilter jwtFilter;
-    private final MyUserDetailsService myUserDetailsService ;
+    private final MyUserDetailsService myUserDetailsService;
+
     @Bean
-    public SecurityFilterChain defaultFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain defaultFilterChain(HttpSecurity http)
+            throws Exception {
+
         http
                 .cors(Customizer.withDefaults())
+
+                // CSRF is disabled because this API uses stateless JWT
+                // authentication through the Authorization header.
                 .csrf(AbstractHttpConfigurer::disable)
+
+                // Do not create HTTP sessions.
+                .sessionManagement(session ->
+                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+                )
+
                 .authorizeHttpRequests(authorize -> authorize
-                                // Admin onboard API (permitAll to add) (After addition - denyAll)
-                                .requestMatchers(HttpMethod.POST,"/api/admin/add").permitAll()
 
-                                // login API
-                                .requestMatchers(HttpMethod.GET,"/api/auth/login").authenticated()
+                        // Admin onboarding
+                        .requestMatchers(HttpMethod.POST, "/api/admin/add")
+                        .permitAll()
 
-                                //Admin onboard manager
-                                .requestMatchers(HttpMethod.POST,"/api/manager/add").hasAuthority("ADMIN")
-                                //Admin onboard HR
-                                .requestMatchers(HttpMethod.POST,"/api/hr/add").hasAuthority("ADMIN")
-                                //HR onboard employee
-                                .requestMatchers(HttpMethod.POST,"/api/employee/add").hasAuthority("HR")
+                        // Login
+                        .requestMatchers(HttpMethod.GET, "/api/auth/login")
+                        .permitAll()
 
-                                //Employee can apply leave
-                                .requestMatchers(HttpMethod.POST, "/api/leavereq/apply").hasAuthority("EMPLOYEE")
+                        // Admin onboarding manager and HR
+                        .requestMatchers(HttpMethod.POST, "/api/manager/add")
+                        .hasAuthority("ADMIN")
 
+                        .requestMatchers(HttpMethod.POST, "/api/hr/add")
+                        .hasAuthority("ADMIN")
 
-                                //Manager Can review the leave
-                                .requestMatchers(HttpMethod.PUT,"/api/reviewleave/{leaveId}").hasAuthority("MANAGER")
+                        // HR onboarding employee
+                        .requestMatchers(HttpMethod.POST, "/api/employee/add")
+                        .hasAuthority("HR")
 
-                                //Employee details
-                                .requestMatchers(HttpMethod.GET,"/api/employee/{id}").permitAll()
+                        // Employee leave application
+                        .requestMatchers(HttpMethod.POST, "/api/leavereq/apply")
+                        .hasAuthority("EMPLOYEE")
 
-                                //Manager details
-                                .requestMatchers(HttpMethod.GET,"/api/manager/{id}").hasAnyAuthority("MANAGER")
+                        // Manager reviews leave
+                        .requestMatchers(HttpMethod.PUT, "/api/reviewleave/{leaveId}")
+                        .hasAuthority("MANAGER")
 
-                                //HR details
-                                .requestMatchers(HttpMethod.GET,"/api/hr/{id}").hasAnyAuthority("HR")
+                        // Employee details
+                        .requestMatchers(HttpMethod.GET, "/api/employee/{id}")
+                        .permitAll()
 
-                                //Update manager details
-                                .requestMatchers(HttpMethod.PUT,"/api/manager").hasAuthority("MANAGER")
+                        // Manager details
+                        .requestMatchers(HttpMethod.GET, "/api/manager/{id}")
+                        .hasAuthority("MANAGER")
 
-                                //Update hr details
-                                .requestMatchers(HttpMethod.PUT,"/api/hr").hasAuthority("HR")
+                        // HR details
+                        .requestMatchers(HttpMethod.GET, "/api/hr/{id}")
+                        .hasAuthority("HR")
 
-                                // HR assigning the manager to employee
-                                .requestMatchers(HttpMethod.PUT,"/api/employee/assign/{managerId}/{employeeId}").hasAuthority("HR")
+                        // Update manager details
+                        .requestMatchers(HttpMethod.PUT, "/api/manager")
+                        .hasAuthority("MANAGER")
 
-                                //Create payroll by HR
-                                .requestMatchers(HttpMethod.POST,"/api/payroll/{employeeId}").hasAuthority("HR")
+                        // Update HR details
+                        .requestMatchers(HttpMethod.PUT, "/api/hr")
+                        .hasAuthority("HR")
 
-                                //Process payroll by HR
-                                .requestMatchers(HttpMethod.POST,"/api/payroll/process/{payrollId}").hasAuthority("HR")
+                        // HR assigns manager to employee
+                        .requestMatchers(
+                                HttpMethod.PUT,
+                                "/api/employee/assign/{managerId}/{employeeId}"
+                        ).hasAuthority("HR")
 
-                                //Markas paid  by HR
-                                .requestMatchers(HttpMethod.PUT,"/api/payroll/pay/{payrollId}").hasAuthority("HR")
+                        // Create payroll
+                        .requestMatchers(HttpMethod.POST, "/api/payroll/{employeeId}")
+                        .hasAuthority("HR")
 
-                                //Getting  Payslip by HR
-                                .requestMatchers(HttpMethod.GET,"/api/payroll/payslip/{payrollId}").hasAuthority("HR")
+                        // Process payroll
+                        .requestMatchers(HttpMethod.POST, "/api/payroll/process/{payrollId}")
+                        .hasAuthority("HR")
 
-//                        //Getting  Payslip by Employee
-                                .requestMatchers(HttpMethod.GET,"/api/payroll/payslip/{payrollId}").hasAuthority("EMPLOYEE")
+                        // Mark payroll as paid
+                        .requestMatchers(HttpMethod.PUT, "/api/payroll/pay/{payrollId}")
+                        .hasAuthority("HR")
 
-                                //Getting  Payslip with empId by employee
-                                .requestMatchers(HttpMethod.GET,"/api/payroll/employee/{employeeId}").hasAnyAuthority("EMPLOYEE","HR")
+                        // Payslip access for HR and employee
+                        .requestMatchers(HttpMethod.GET, "/api/payroll/payslip/{payrollId}")
+                        .hasAnyAuthority("HR", "EMPLOYEE")
 
-                                //Adding PayrollComponents
-                                .requestMatchers(HttpMethod.POST,"/api/payroll-components/{payrollId}").hasAuthority("HR")
+                        // Employee payroll history
+                        .requestMatchers(HttpMethod.GET, "/api/payroll/employee/{employeeId}")
+                        .hasAnyAuthority("EMPLOYEE", "HR")
 
-                                //Getting  components by payroll_id by hr
-                                .requestMatchers(HttpMethod.GET,"/api/payroll-components/payroll/{payrollId}").hasAnyAuthority("HR","EMPLOYEE")
+                        // Add payroll components
+                        .requestMatchers(HttpMethod.POST, "/api/payroll-components/{payrollId}")
+                        .hasAuthority("HR")
 
+                        // Get payroll components
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/payroll-components/payroll/{payrollId}"
+                        ).hasAnyAuthority("HR", "EMPLOYEE")
 
-                                .requestMatchers(HttpMethod.GET,"/api/leavereq/manager").hasAuthority("MANAGER")
-                                .requestMatchers(HttpMethod.GET,"/api/leavereq/employee").hasAuthority("EMPLOYEE")
+                        // Manager leave requests
+                        .requestMatchers(HttpMethod.GET, "/api/leavereq/manager")
+                        .hasAuthority("MANAGER")
 
+                        // Employee leave requests
+                        .requestMatchers(HttpMethod.GET, "/api/leavereq/employee")
+                        .hasAuthority("EMPLOYEE")
 
+                        // Delete payroll component
+                        .requestMatchers(HttpMethod.DELETE, "/api/payroll-components/{componentId}")
+                        .hasAuthority("HR")
 
-                                //Getting  components by payroll_id by emp
-                                .requestMatchers(HttpMethod.GET,"/api/payroll-components/payroll/{payrollId}").hasAuthority("EMPLOYEE")
+                        // Update components
+                        .requestMatchers(HttpMethod.PATCH, "/components/**")
+                        .hasAuthority("HR")
 
-                                //Getting  payslip with emplId by HR
-                                .requestMatchers(HttpMethod.DELETE,"/api/payroll-components/{componentId}").hasAuthority("HR")
+                        // Update employee
+                        .requestMatchers(HttpMethod.PUT, "/api/employee/{id}")
+                        .hasAnyAuthority("HR", "EMPLOYEE")
 
-                                .requestMatchers(HttpMethod.PATCH, "/components/**").hasAuthority("HR")
-                                .requestMatchers(HttpMethod.PUT, "/api/employee/{id}").hasAnyAuthority("HR", "EMPLOYEE")
+                        // Payroll status
+                        .requestMatchers(HttpMethod.GET, "/api/payroll/status/{status}")
+                        .hasAuthority("HR")
 
+                        // Authentication user details
+                        .requestMatchers(HttpMethod.GET, "/api/auth/user-details")
+                        .authenticated()
 
-                                //Getting  PayrollStatus by HR
-                                .requestMatchers(HttpMethod.GET,"/api/payroll/status/{status}").hasAuthority("HR")
-                                .requestMatchers(HttpMethod.GET, "/api/auth/user-details").authenticated()
-                                //Getting  Payroll By date rang ( by HR)
-                                .requestMatchers(HttpMethod.GET,"/api/payroll/period").hasAuthority("HR")
-                                //Search by employee and date range
-                                .requestMatchers(HttpMethod.GET,"/api/payroll/search").hasAuthority("HR")
-                                //Earning history
-                                .requestMatchers(HttpMethod.GET,"/api/employee/earnings/{id}").hasAuthority("EMPLOYEE")
-                                //Deduction history
-                                .requestMatchers(HttpMethod.GET,"/api/employee/deductions/{id}").hasAuthority("EMPLOYEE")
-                                //Monthly Report By HR
-                                .requestMatchers(HttpMethod.GET,"/api/payroll/reports/monthly").hasAuthority("HR")
-                                //Payslip with payrollId By Employee
-                                .requestMatchers(HttpMethod.GET,"/api/payroll/payslip-text/{payrollId}").hasAuthority("EMPLOYEE")
-                                //payroll Status by HR
-                                .requestMatchers(HttpMethod.GET,"/api/payroll/payment-status/{payrollId}").hasAuthority("HR")
-                                //My Payroll
-                                .requestMatchers(HttpMethod.GET,"/api/payroll/my-payroll").hasAnyAuthority("HR","EMPLOYEE","MANAGER")
+                        // Payroll by date range
+                        .requestMatchers(HttpMethod.GET, "/api/payroll/period")
+                        .hasAuthority("HR")
 
+                        // Search payroll
+                        .requestMatchers(HttpMethod.GET, "/api/payroll/search")
+                        .hasAuthority("HR")
 
+                        // Employee earnings history
+                        .requestMatchers(HttpMethod.GET, "/api/employee/earnings/{id}")
+                        .hasAuthority("EMPLOYEE")
 
+                        // Employee deductions history
+                        .requestMatchers(HttpMethod.GET, "/api/employee/deductions/{id}")
+                        .hasAuthority("EMPLOYEE")
 
-                                .anyRequest().permitAll()
+                        // Monthly payroll report
+                        .requestMatchers(HttpMethod.GET, "/api/payroll/reports/monthly")
+                        .hasAuthority("HR")
+
+                        // Employee payslip text
+                        .requestMatchers(HttpMethod.GET, "/api/payroll/payslip-text/{payrollId}")
+                        .hasAuthority("EMPLOYEE")
+
+                        // Payroll payment status
+                        .requestMatchers(HttpMethod.GET, "/api/payroll/payment-status/{payrollId}")
+                        .hasAuthority("HR")
+
+                        // My payroll
+                        .requestMatchers(HttpMethod.GET, "/api/payroll/my-payroll")
+                        .hasAnyAuthority("HR", "EMPLOYEE", "MANAGER")
+
+                        // All other endpoints require authentication
+                        .anyRequest().authenticated()
                 );
-        // Add jwt filter before Spring's Auth Filter
-        http.addFilterBefore(jwtFilter , UsernamePasswordAuthenticationFilter.class);
-        http.httpBasic(Customizer.withDefaults());
+
+        // Add JWT filter before username/password authentication.
+        http.addFilterBefore(
+                jwtFilter,
+                UsernamePasswordAuthenticationFilter.class
+        );
+
+        // Authentication is handled by JWT.
+        // Do not enable HTTP Basic for this stateless API.
         return http.build();
     }
+
     @Bean
-    public AuthenticationProvider getProvider(){
-        DaoAuthenticationProvider authenticationProvider = new DaoAuthenticationProvider(myUserDetailsService);
+    public AuthenticationProvider getProvider() {
+
+        DaoAuthenticationProvider authenticationProvider =
+                new DaoAuthenticationProvider(myUserDetailsService);
+
         authenticationProvider.setPasswordEncoder(getEncoder());
+
         return authenticationProvider;
     }
 
     @Bean
-    public PasswordEncoder getEncoder(){
+    public PasswordEncoder getEncoder() {
         return new BCryptPasswordEncoder();
     }
 }
